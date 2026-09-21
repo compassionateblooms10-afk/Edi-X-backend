@@ -7,6 +7,7 @@ from app.models import CustomItem, AdminUser
 from app.schemas import CustomItemOut
 from app.security import get_current_admin
 from app.config import settings
+from app.services import upload_image_to_r2
 
 router = APIRouter(prefix="/api/custom-items", tags=["Customizable Component Items"])
 
@@ -23,12 +24,7 @@ async def add_custom_item(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin) # Protected Admin Endpoint
 ):
-    filename = f"{uuid.uuid4()}_{image.filename}"
-    file_path = os.path.join(settings.UPLOAD_DIR, filename)
-    with open(file_path, "wb") as f:
-        f.write(await image.read())
-
-    image_url = f"/uploads/{filename}"
+    image_url = upload_image_to_r2(image, folder="products")
     item = CustomItem(name=name, category=category, unit_price=unit_price, image_url=image_url)
     db.add(item)
     db.commit()
