@@ -7,12 +7,22 @@ from app.models import Product, AdminUser
 from app.schemas import ProductOut
 from app.security import get_current_admin
 from app.config import settings
+from app.services import upload_image_to_r2
 
 router = APIRouter(prefix="/api/products", tags=["Standard Products"])
 
 @router.get("", response_model=List[ProductOut])
 def list_products(db: Session = Depends(get_db)):
     return db.query(Product).all()
+
+@router.post("/image")
+async def upload_single_image(file: UploadFile = File(...)):
+    """Uploads a single image to Cloudflare R2 and returns the image URL.
+
+    Use this when uploading image assets before form submission.
+    """
+    image_url = upload_image_to_r2(file, folder="products")
+    return {"status": "success", "image_url": image_url}
 
 @router.post("", response_model=ProductOut, status_code=status.HTTP_201_CREATED)
 async def create_product(
@@ -24,17 +34,24 @@ async def create_product(
     admin: AdminUser = Depends(get_current_admin) # Protected Admin Endpoint
 ):
     # Save Image File locally
-    filename = f"{uuid.uuid4()}_{image.filename}"
-    file_path = os.path.join(settings.UPLOAD_DIR, filename)
-    with open(file_path, "wb") as f:
-        f.write(await image.read())
+    
 
-    image_url = f"/uploads/{filename}"
+    """Uploads the product image to R2 and creates the product entry."""
+    # Upload image to R2
+    image_url = upload_image_to_r2(image, folder="products")
     product = Product(title=title, description=description, price=price, image_url=image_url)
     db.add(product)
     db.commit()
     db.refresh(product)
-    return product
+    return {
+        "status": "success",
+        "product": {
+            "title": title,
+            "price": price,
+            "description": description,
+            "image_url": image_url,
+        },
+    }
 
 @router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_product(
